@@ -5778,7 +5778,6 @@ FORCE_INLINE int _mm_movemask_epi8(__m128i a)
     //
     // Step 1: Extract MSB of each byte
     uint8x16_t msbs = vshrq_n_u8(input, 7);
-    uint64x2_t bits = vreinterpretq_u64_u8(msbs);
 
     // Step 2: Parallel bit collection via shift-right-accumulate
     //
@@ -5794,13 +5793,22 @@ FORCE_INLINE int _mm_movemask_epi8(__m128i a)
     //
     //   vsra(..., 14): combine pairs -> 4 bits in bytes 3,7
     //   vsra(..., 28): combine all   -> 8 bits in byte 7 (actually byte 0)
+    uint64x2_t bits = vreinterpretq_u64_u8(msbs);
     bits = vsraq_n_u64(bits, bits, 7);
     bits = vsraq_n_u64(bits, bits, 14);
     bits = vsraq_n_u64(bits, bits, 28);
 
     // Step 3: Extract packed result from byte 0 of each half
     uint8x16_t output = vreinterpretq_u8_u64(bits);
-    return vgetq_lane_u8(output, 0) | (vgetq_lane_u8(output, 8) << 8);
+
+    // Step 4: Extract the high byte (position 8) and write it into lane 1,
+    // right next to the untouched low byte at lane 0.
+    unsigned char output_high = vgetq_lane_u8(output, 8);
+    output = vsetq_lane_u8(output_high, output, 1);
+
+    // Step 5: Reinterpret so lanes 0 and 1 form a single 16-bit element.
+    uint16x8_t combined = vreinterpretq_u16_u8(output);
+    return _sse2neon_static_cast(int, vgetq_lane_u16(combined, 0));
 #endif
 }
 
